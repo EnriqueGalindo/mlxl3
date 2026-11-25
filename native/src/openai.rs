@@ -829,7 +829,10 @@ fn bridge_request(input: &Value, model: &str) -> Result<Value, String> {
     for message in raw_messages {
         let role = message["role"].as_str().ok_or("message role is missing")?;
         if !matches!(role, "system" | "user" | "assistant" | "tool")
-            || message.get("tool_calls").is_some()
+            || message.get("tool_calls").is_some_and(|calls| {
+                // Clients often send `"tool_calls": null` or `[]` on plain text messages.
+                !calls.is_null() && calls.as_array().is_none_or(|calls| !calls.is_empty())
+            })
         {
             return Err("MLXL3 requires text messages without tool calls".into());
         }
