@@ -302,6 +302,11 @@ impl ChatTokenizer {
         } else {
             values
         };
+        // Local: MLXL3_REASONING_EFFORT sets the template's `reasoning_effort` (Qwen3.8: xhigh, medium, low).
+        let values = match std::env::var("MLXL3_REASONING_EFFORT") {
+            Ok(effort) if !effort.is_empty() => context! { reasoning_effort => effort, ..values },
+            _ => values,
+        };
         self.environment
             .get_template("chat")?
             .render(values)
