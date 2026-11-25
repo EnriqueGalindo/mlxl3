@@ -350,6 +350,7 @@ pub(crate) fn checkpoint_dtype(dtype: &str, name: &str) -> Result<Dtype> {
         "F32" => Dtype::Float32,
         "U16" => Dtype::UInt16,
         "I16" => Dtype::Int16,
+        "I8" => Dtype::Int8,
         "U32" => Dtype::UInt32,
         "I32" => Dtype::Int32,
         "BOOL" => Dtype::Bool,

@@ -10,9 +10,28 @@ pub enum Embedding {
         offsets: Array,
         tail: Array,
     },
+    /// Lossy: int8 codes with one F16 scale per row (row max-abs / 127). Half the resident bytes of F16.
+    Quant8 {
+        codes: Array,
+        scale: Array,
+    },
 }
 
 impl Embedding {
+    /// Table stored on disk as int8 codes plus one F16 scale per row (`eval/embed_q8.py`).
+    pub fn quant8(codes: Array, scale: Array) -> Result<Self> {
+        ensure!(
+            codes.dtype() == Dtype::Int8
+                && codes.shape().len() == 2
+                && scale.shape() == [codes.shape()[0], 1],
+            "invalid 8-bit embedding tensors"
+        );
+        let scale = scale.astype_f16()?;
+        codes.eval()?;
+        scale.eval()?;
+        Ok(Self::Quant8 { codes, scale })
+    }
+
     pub fn new(weight: Array, packed: bool) -> Result<Self> {
         if !packed {
             return Ok(Self::Dense(weight));
@@ -45,6 +64,7 @@ impl Embedding {
         match self {
             Self::Dense(a) => a.shape(),
             Self::Packed { shape, .. } => shape,
+            Self::Quant8 { codes, .. } => codes.shape(),
         }
     }
 
@@ -64,6 +84,10 @@ impl Embedding {
                     .and_then(|n| n.checked_add(tail))
                     .context("packed embedding size overflow")
             }
+            Self::Quant8 { codes, scale } => codes
+                .retained_bytes()?
+                .checked_add(scale.retained_bytes()?)
+                .context("quantized embedding size overflow"),
         }
     }
 
@@ -71,6 +95,10 @@ impl Embedding {
     pub fn take(&self, ids: &Array, axis: i32) -> Result<Array> {
         match self {
             Self::Dense(a) => a.take(ids, axis),
+            Self::Quant8 { codes, scale } => {
+                ensure!(axis == 0, "invalid quantized embedding axis");
+                codes.take(ids, 0)?.astype_f16()?.mul(&scale.take(ids, 0)?)
+            }
             Self::Packed {
                 shape,
                 main,

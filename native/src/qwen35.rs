@@ -1687,15 +1687,34 @@ impl Qwen35Moe {
                 .context("missing dense Qwen intermediate size")?
         };
         let hidden = config.hidden_size;
-        let embeddings = half_weight(
-            checkpoint,
-            "model.language_model.embed_tokens.weight",
-            Some(&[config.vocab_size, hidden]),
-        )?;
-        let embeddings = crate::embedding::Embedding::new(
-            embeddings,
-            std::env::var("MLXL3_EMBEDDINGS_PACKED").as_deref() == Ok("1"),
-        )?;
+        let embeddings = if checkpoint
+            .tensors
+            .contains_key("model.language_model.embed_tokens.q8")
+        {
+            let codes = crate::linear::checkpoint_array(
+                checkpoint,
+                "model.language_model.embed_tokens.q8",
+            )?;
+            ensure!(
+                codes.shape() == [config.vocab_size, hidden],
+                "invalid 8-bit embedding shape"
+            );
+            let scale = crate::linear::checkpoint_array(
+                checkpoint,
+                "model.language_model.embed_tokens.q8_scale",
+            )?;
+            crate::embedding::Embedding::quant8(codes, scale)?
+        } else {
+            let embeddings = half_weight(
+                checkpoint,
+                "model.language_model.embed_tokens.weight",
+                Some(&[config.vocab_size, hidden]),
+            )?;
+            crate::embedding::Embedding::new(
+                embeddings,
+                std::env::var("MLXL3_EMBEDDINGS_PACKED").as_deref() == Ok("1"),
+            )?
+        };
         let norm = sanitized_norm(checkpoint, "model.language_model.norm.weight", &[hidden])?;
         let head = Projection::load(checkpoint, "lm_head", hidden, config.vocab_size, false)?;
         let mut layers = Vec::with_capacity(config.num_hidden_layers);
