@@ -292,7 +292,8 @@ impl ChatTokenizer {
             bos_token => &self.bos_token,
             eos_token => &self.eos_token,
             add_generation_prompt => true,
-            preserve_thinking => true,
+            // Local: MLXL3_PRESERVE_THINKING=0 renders earlier assistant turns without an empty think block.
+            preserve_thinking => std::env::var("MLXL3_PRESERVE_THINKING").map_or(true, |v| v != "0"),
             tools => tools,
             documents => Option::<bool>::None,
         };
