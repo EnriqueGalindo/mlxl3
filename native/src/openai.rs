@@ -849,7 +849,14 @@ fn bridge_request(input: &Value, model: &str) -> Result<Value, String> {
             }
             content => content.clone(),
         };
-        messages.push(json!({"role":role,"content":content}));
+        // Local: keep an assistant turn's earlier thinking so the chat template can render it
+        // (`preserve_thinking`). Upstream dropped the field silently.
+        match message.get("reasoning_content").and_then(Value::as_str) {
+            Some(thinking) if role == "assistant" && !thinking.trim().is_empty() => {
+                messages.push(json!({"role":role,"content":content,"reasoning_content":thinking}))
+            }
+            _ => messages.push(json!({"role":role,"content":content})),
+        }
     }
     let raw_max_tokens = input
         .get("max_completion_tokens")
